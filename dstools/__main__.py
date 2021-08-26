@@ -1,36 +1,46 @@
 import sys
 import click
-from dstools.launcher import launch_tool as cve_search, lookup_cve
+import six
+from pyfiglet import figlet_format
+from termcolor import colored
+import docker
+from dstools.launcher import launch_tool
+
+
+def log(string, color, font="slant", figlet=False):
+    if colored:
+        if not figlet:
+            six.print_(colored(string, color))
+        else:
+            six.print_(colored(figlet_format(
+                string, font=font), color))
+    else:
+        six.print_(string)
 
 @click.group()
-@click.version_option("1.0.0")
+@click.version_option("0.1.0")
 def main():
-    """A CVE Search and Lookup CLI"""
-    pass
-
+    """
+    A Data Science Tool Launcher CLI
+    """
+    log("Data Science Tools!", color="blue", figlet=True)
+    log("Welcome to the Data Science Tools CLI", "green")
+    try:
+        client = docker.from_env()
+    except:
+        log("Docker is not installed! Visit https://docs.docker.com/get-docker/",color="red")
 
 @main.command()
 @click.argument('keyword', required=False)
-def search(**kwargs):
-    """Search through CVE Database for vulnerabilities"""
-    results = cve_search(kwargs.get("keyword"))
-    large_text = ""
-    for res in results:
-        if res:
-            large_text += f'{res["name"]} - {res["url"]} \n{res["description"]}'
-    click.echo_via_pager(large_text)
-
+def menu(**kwargs):
+    """Select from a menu of tools"""
+    
 
 @main.command()
 @click.argument('name', required=False)
-def look_up(**kwargs):
-    """Get vulnerability details using its CVE-ID on CVE Database"""
-    details = lookup_cve(kwargs.get("name"))
-    click.echo(f'CVE-ID \n\n{details["cve-id"]}\n')
-    click.echo(f'Description \n\n{details["description"]}\n')
-    click.echo(f'References \n\n{details["references"]}\n')
-    click.echo(f'Assigning CNA \n\n{details["assigning cna"]}\n')
-    click.echo(f'Date Entry \n\n{details["date entry created"]}')
+def id(**kwargs):
+    """Launch a tool if you know the ID"""
+    pass
 
 
 if __name__ == '__main__':
