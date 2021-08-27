@@ -34,7 +34,7 @@ def main():
 @click.argument('keyword', required=False)
 def menu(**kwargs):
     """Select from a menu of tools"""
-    
+    launch_tool()
 
 @main.command()
 @click.argument('name', required=False)

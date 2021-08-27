@@ -1,8 +1,4 @@
 click
-requests
-beautifulsoup4
-lxml
-twine
 six
 pyfiglet
 termcolor
