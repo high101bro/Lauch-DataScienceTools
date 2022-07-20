@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-from cProfile import run
-import docker, click, webbrowser, requests, json, time, re
+import docker, click, webbrowser, requests, json, time, re, os
 from operator import itemgetter
+from pathlib import Path
 
 # Placeholders
 localhost = 'http://localhost'
@@ -28,12 +28,19 @@ excludedImages = [
     'afcai2c/python38-ai',
     'afcai2c/python-r-ai',
     'afcai2c/jupyterlab',
+    'afcai2c/r-base',
     'afcai2c/r-studio',
     'afcai2c/r-studio-valex',
     'afcai2c/tensorboard',
     'afcai2c/openjdk11'
     ]
 
+# #create(name='dsVolume', driver='local')
+# client.volumes.prune()
+# print(
+#    client.volumes.list()
+#    )
+# client.volumes.prune()
 
 ##### Start Method 1 #####
 dsToolDict = client.images.search('afcai2c')
@@ -44,25 +51,6 @@ for tool in dsToolDict:
         print("%-30s %-10s %s" %(tool['name'],tool['star_count'],tool['description']))
 #print(dsToolDict[0]['name'])
 ##### End Method 1 #####
-
-##### Start Method 2 #####
-# Previous method, grabs Last Updated, and Pull Count, but for some reason R Studio Images are not showing up
-# Queries Docker Hub for Data Science Tools
-# url = "https://hub.docker.com/v2/repositories/afcai2c"
-# dsToolsByte = requests.get(url).content
-# dsToolsStr  = dsToolsByte.decode()
-# dsToolsDict = json.loads(dsToolsStr)
-# dsToolList = dsToolsDict['results']
-
-# # Prints out the images available to run
-# print("{0:30}{1:30}{2:65}".format('Image Name','Last Updated','Pull Count'))
-# for tool in dsToolList:
-#     imageName = "{0}/{1}".format(tool['namespace'],tool['name'])
-#     #print(imageName)
-#     imageInfo = "{0:30}{1:30}{2:10}".format(imageName,tool['last_updated'],tool['pull_count'])
-#     if imageName not in excludedImages:
-#         print(imageInfo)
-##### End Method 2 #####
 
 print("\nData Science tools detected:")
 print("%-35s %-20s %s" %('Image','ID','Status'))
@@ -151,20 +139,48 @@ if not runningTools and not stoppedTools:
 
 def startTool(image,tag,port):
     imageName = "{0}:{1}".format(image,tag)
+    localhostHome = Path.home()
+    dsToolsVolume = "{0}/dsTools".format(localhostHome)
+    command = "mkdir -p {0}".format(dsToolsVolume)
+    os.system(command)
+    command = "chmod 777 {0}".format(dsToolsVolume)
+    os.system(command)
+    time.sleep(2)
     tool = client.containers.run(
         image  = imageName,
         ports  = {port:port},
-        detach = True        )
+        detach = True,
+        volumes = {
+            dsToolsVolume: {
+                'bind': '/home/localhost/dsTools', 
+                'mode': 'rw'
+                },
+            '/tmp': {
+                'bind': '/home/localhost/tmp', 
+                'mode': 'rw'}
+            },
+        working_dir = '/home'
+        )
     launchUrl = "{0}:{1}".format(localhost,port)
     webbrowser.open(launchUrl)
-    message = "\n{0} will be hosted at: {1}\n".format(image,launchUrl)
+    message = "\
+\n[!] {0} will be hosted at: {1}\
+\n\n[!] The following paths have been mounted within the tool:".format(image,launchUrl)
     print(message)
+    print("    %-20s %-10s" %('localhost',"tool (" + image + ")"))
+    print("    %-20s %-10s" %(localhostHome,"/home/localhost"))
+    print("    %-20s %-10s" %("/tmp","/tmp/localhost"))
+
     return(tool)
 
 startTool(image,tag,port)
 
 if __name__ == '__main__':
     startTool()
+
+
+
+
 
 
 
