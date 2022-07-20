@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-from sys import float_repr_style
+from cProfile import run
 import docker, click, webbrowser, requests, json, time, re
+from operator import itemgetter
 
 # Placeholders
 localhost = 'http://localhost'
@@ -12,54 +13,111 @@ stop_tool = None
 
 client = docker.from_env()
 
-# Queries Docker Hub for Data Science Tools
-url = "https://hub.docker.com/v2/repositories/afcai2c"
-dsToolsByte = requests.get(url).content
-dsToolsStr  = dsToolsByte.decode()
-dsToolsDict = json.loads(dsToolsStr)
-dsToolsList = dsToolsDict['results']
+
+#####################################################################
+# update to this
+# client.images.search('afcai2c')
+#####################################################################
 
 # This list contains images to exclude from being displayed
-excludedImages = ['afcai2c/python36','afcai2c/python36-ai','afcai2c/python38','afcai2c/python38-ai']
+excludedImages = [
+    'afcai2c/ubi8',
+    'afcai2c/python36',
+    'afcai2c/python36-ai',
+    'afcai2c/python38',
+    'afcai2c/python38-ai',
+    'afcai2c/python-r-ai',
+    'afcai2c/jupyterlab',
+    'afcai2c/r-studio',
+    'afcai2c/r-studio-valex',
+    'afcai2c/tensorboard',
+    'afcai2c/openjdk11'
+    ]
 
-#print(dsToolsList[0])
 
-# Prints out the images available to run
-print("{0:30}{1:30}{2:65}".format('Image Name','Last Updated','Pull Count'))
-for tool in dsToolsList:
-    imageName = "{0}/{1}".format(tool['namespace'],tool['name'])
-    #print(imageName)
-    imageInfo = "{0:30}{1:30}{2:10}".format(imageName,tool['last_updated'],tool['pull_count'])
-    if imageName not in excludedImages:
-        print(imageInfo)
+##### Start Method 1 #####
+dsToolDict = client.images.search('afcai2c')
+dsToolDict = sorted(dsToolDict, key=itemgetter('name'))
+print("%-30s %-10s %s" %('Image Name','Stars','Description'))
+for tool in dsToolDict:
+    if tool['name'] not in excludedImages:
+        print("%-30s %-10s %s" %(tool['name'],tool['star_count'],tool['description']))
+#print(dsToolDict[0]['name'])
+##### End Method 1 #####
 
-print("\nRunning data science tools:")
-print("{0:30}{1:30}".format('   Image','   ID'))
+##### Start Method 2 #####
+# Previous method, grabs Last Updated, and Pull Count, but for some reason R Studio Images are not showing up
+# Queries Docker Hub for Data Science Tools
+# url = "https://hub.docker.com/v2/repositories/afcai2c"
+# dsToolsByte = requests.get(url).content
+# dsToolsStr  = dsToolsByte.decode()
+# dsToolsDict = json.loads(dsToolsStr)
+# dsToolList = dsToolsDict['results']
+
+# # Prints out the images available to run
+# print("{0:30}{1:30}{2:65}".format('Image Name','Last Updated','Pull Count'))
+# for tool in dsToolList:
+#     imageName = "{0}/{1}".format(tool['namespace'],tool['name'])
+#     #print(imageName)
+#     imageInfo = "{0:30}{1:30}{2:10}".format(imageName,tool['last_updated'],tool['pull_count'])
+#     if imageName not in excludedImages:
+#         print(imageInfo)
+##### End Method 2 #####
+
+print("\nData Science tools detected:")
+print("%-35s %-20s %s" %('Image','ID','Status'))
 containers = client.containers.list(all=True)
 
 runningTools = False
-lastContainer = None
+stoppedTools = False
+lastRunningContainer = None
+lastStoppedContainer = None
 for i in containers:
     c = str(i).split(':')[1].rstrip(">").strip()
     attrs = client.containers.get(c).attrs
-    
+    # print("======================{}".format(attrs['State']))
     pattern = re.compile("^afcai2c/*")
     if pattern.match(attrs['Config']['Image']) and attrs['State']['Running'] :
         runningTools = True
-        print
-        print("   {0:30}{1:30}".format(attrs['Config']['Image'],attrs['Config']['Hostname']))
-        lastContainer = attrs['Config']['Hostname']
+        print("%-35s %-20s %s" %(attrs['Config']['Image'],attrs['Config']['Hostname'],attrs['State']['Running']))
+        lastRunningContainer = attrs['Config']['Hostname']
+    if pattern.match(attrs['Config']['Image']) and attrs['State']['Running'] == False :
+        stoppedTools = True
+        print("%-35s %-20s %s" %(attrs['Config']['Image'],attrs['Config']['Hostname'],attrs['State']['Running']))
+        lastStoppedContainer = attrs['Config']['Hostname']
 
-if runningTools == False:
-    print("   {0:30}{1:30}".format('None','None'))
-else:
-    stopTool = bool(input("\nA tool is already running, do you want to stop it? [False] ") or False)
+if runningTools:
+    stopTool = bool(input("\nA running tool has been detected, do you want to stop it? [False] ") or False)
     if stopTool:
-        message = "Enter the container ID: [{0}] ".format(lastContainer)
-        containerID = str(input(message) or lastContainer)
+        message = "Enter the container ID: [{0}] ".format(lastRunningContainer)
+        containerID = str(input(message) or lastRunningContainer)
         containerToStop = client.containers.get(containerID)
         containerToStop.stop()
+        print('Attempting to stop the container.')
         quit()
+
+if stoppedTools:
+    startTool = bool(input("\nA stopped tool has been detected, do you want to restart it? [False] ") or False)
+    if startTool:
+        message = "Enter the container ID: [{0}] ".format(lastStoppedContainer)
+        containerID = str(input(message) or lastStoppedContainer)
+        containerToStop = client.containers.get(containerID)
+        containerToStop.start()
+        print('Attempting to restart the container.')
+        quit()
+    elif startTool == False:
+        removeTool = bool(input("--- Do you want to remove the tool? [False] ") or False)
+        if removeTool:
+            message = "Enter the container ID: [{0}] ".format(lastStoppedContainer)
+            containerID = str(input(message) or lastStoppedContainer)
+            containerToStop = client.containers.get(containerID)
+            containerToStop.remove()
+            print('Attempting to remove the container.')
+            quit()
+
+
+if not runningTools and not stoppedTools:
+        print("%-35s %-20s %s" %(None,None,None))
 
 
 @click.command()   
@@ -78,11 +136,14 @@ else:
 @click.option(
     '--port',
     prompt  = "\nList of the default tool ports: \
-\n   JupyterLab    = 8888\
-\n   R-Studio      = 8787\
-\n   Dash          = 8050\
-\n   R-Shiny       = 3838\
-\n   Label Studio  = 8080\
+\n   JupyterLab     8888\
+\n   R-Studio       8787\
+\n   Dash           8050\
+\n   R-Shiny        3838\
+\n   Label Studio   8080\
+\n   Metabase       3000\
+\n   SuperSet       8088\
+\n   nginx          8080\\8443\
 \nEnter the port to bind:",
     default = 8888,
     help    = "The tool will be accessible within the browser at http://localhost:[PORT]"
@@ -96,7 +157,7 @@ def startTool(image,tag,port):
         detach = True        )
     launchUrl = "{0}:{1}".format(localhost,port)
     webbrowser.open(launchUrl)
-    message = "\n{0} will be hosted at: http://localhost:{1}".format(image,port)
+    message = "\n{0} will be hosted at: {1}\n".format(image,launchUrl)
     print(message)
     return(tool)
 
